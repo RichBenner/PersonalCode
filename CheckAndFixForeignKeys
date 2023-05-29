@@ -1,0 +1,51 @@
+DROP TABLE IF EXISTS SSG.dbo.FKUncheckedList
+CREATE TABLE SSG.dbo.FKUncheckedList
+(
+RowNum int identity(1,1)
+,DBName sysname
+,SchemaName sysname
+,TableName sysname
+,FKName sysname
+,CheckScript nvarchar(max)
+,BeginCheck datetime
+,EndCheck datetime
+)
+
+
+DECLARE @SQL varchar(max)
+
+SET @SQL = 
+'INSERT INTO SSG.dbo.FKUncheckedList (DBName, SchemaName, TableName, FKName, CheckScript)
+SELECT 
+DB_NAME() DBName,
+s.name SchemaName,
+o.name TableName,
+i.name FKName,
+''ALTER TABLE '' + o.name + '' WITH CHECK CHECK CONSTRAINT '' + i.name
+from sys.foreign_keys i
+INNER JOIN sys.objects o ON i.parent_object_id = o.object_id
+INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+WHERE i.is_not_trusted = 1 AND i.is_not_for_replication = 0'
+
+EXEC sp_MSforeachdb @SQL
+
+
+DECLARE @loop INT = 1
+
+WHILE @loop <= (SELECT MAX(RowNum) FROM SSG.dbo.FKUncheckedList)
+BEGIN
+
+	UPDATE SSG.dbo.FKUncheckedList
+		SET BeginCheck = GETDATE()
+		WHERE RowNum = @loop
+
+	SET @SQL = (SELECT CheckScript FROM SSG.dbo.FKUncheckedList WHERE RowNum = @loop)
+	EXEC (@SQL)
+
+	UPDATE SSG.dbo.FKUncheckedList
+		SET EndCheck = GETDATE()
+		WHERE RowNum = @loop
+
+	SET @loop = @loop + 1
+
+END
